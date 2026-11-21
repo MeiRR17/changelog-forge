@@ -59,7 +59,7 @@ The mode is read-only; it does not generate release notes, edit files or create 
     import { auditConventionalCommits, auditText } from './src/lint.js';
     const audit = auditConventionalCommits(commits);
 
-The audit's commit list is bounded to 3,000. The CLI fetches **one additional record** to detect oversized ranges and fails with exit code **2** instead of reporting success after silently checking a truncated subset. Narrow `--from`/`--to` when needed. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
+The audit's commit list is bounded to 3,000. As with changelog generation, the CLI fetches **one additional record** to detect oversized ranges and fails with exit code **2** instead of reporting success after silently checking a truncated subset. Narrow `--from`/`--to` when needed. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
 
 ## Optional SemVer recommendation
 
@@ -86,7 +86,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--force` — explicitly permit overwriting an existing output file
 - `--help` — show usage information
 
-Without `--force`, an existing output file is never overwritten. The CLI skips merge commits and limits collection to 3,000 commits per invocation. Use an explicit `--from` for predictable release boundaries in projects with many tags.
+Without `--force`, an existing output file is never overwritten. The CLI skips merge commits and supports **at most 3,000 commits per range**, in both changelog generation and CI audit modes. It deliberately reads one extra record to detect truncation and fails with exit code 2 rather than publishing incomplete release notes. Malformed Git log records likewise abort generation instead of being silently skipped. Use an explicit `--from` for predictable release boundaries in projects with many tags.
 
 ## Library use
 
