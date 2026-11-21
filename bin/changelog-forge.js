@@ -18,6 +18,7 @@ const HELP = [
   '  --version X.Y.Z   Release version (default Unreleased)',
   '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
   '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
+  '  --require-scope          In CI check mode, demand type(scope): description',
   '  --date YYYY-MM-DD Release date (only used with --version)',
   '  --json            Print structured notes as JSON',
   '  --output FILE     Write to a file instead of stdout',
@@ -62,6 +63,7 @@ function parseArgs(args) {
     if (flag === '--all') { opts.all = true; continue; }
     if (flag === '--json') { opts.json = true; continue; }
     if (flag === '--check-conventional') { opts.checkConventional = true; continue; }
+    if (flag === '--require-scope') { opts.requireScope = true; continue; }
     if (flag === '--force') { opts.force = true; continue; }
     if (!single.has(flag)) throw new Error('Unknown option: ' + flag + '. Try --help.');
     const value = args[++i];
@@ -71,6 +73,9 @@ function parseArgs(args) {
   if (opts.all && opts.from) throw new Error('Choose --all or --from, not both.');
   if (opts.date && !opts.version) throw new Error('--date requires --version.');
   if (opts.force && !opts.output) throw new Error('--force requires --output.');
+  if (opts.requireScope && !opts.checkConventional) {
+    throw new Error('--require-scope requires --check-conventional.');
+  }
   if (opts.checkConventional && (opts.version || opts.date || opts.json || opts.output ||
       opts.force || opts['recommend-from'])) {
     throw new Error('--check-conventional is a read-only CI mode and cannot be combined with release or output flags.');
@@ -111,7 +116,7 @@ function main() {
     throw new RangeError('More than 3,000 commits in the range. Narrow --from/--to before running a compliance check.');
   }
   if (options.checkConventional) {
-    const audit = auditConventionalCommits(commits);
+    const audit = auditConventionalCommits(commits, { requireScope: Boolean(options.requireScope) });
     process.stdout.write(auditText(audit));
     if (!audit.compliant) process.exitCode = 1;
     return;
