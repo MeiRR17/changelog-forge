@@ -38,7 +38,9 @@ export function parseCommit(commit) {
       typeof subject !== 'string' || typeof body !== 'string') {
     throw new TypeError('Commit requires a hash, subject and optional body string.');
   }
-  const match = COMMIT_PATTERN.exec(subject.trim());
+  const candidate = COMMIT_PATTERN.exec(subject.trim());
+  // A heading with only whitespace after the colon is not conventional.
+  const match = candidate && candidate[4].trim() ? candidate : null;
   const type = match ? match[1].toLowerCase() : 'other';
   const breakingNotes = extractBreaking(body);
   return {
