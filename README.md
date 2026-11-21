@@ -56,7 +56,7 @@ The mode is read-only; it does not generate release notes, edit files or create 
     import { auditConventionalCommits, auditText } from './src/lint.js';
     const audit = auditConventionalCommits(commits);
 
-The audit's commit list is bounded to 3,000, matching the existing Git collection limit. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
+The audit's commit list is bounded to 3,000. The CLI fetches **one additional record** to detect oversized ranges and fails with exit code **2** instead of reporting success after silently checking a truncated subset. Narrow `--from`/`--to` when needed. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
 
 ## Optional SemVer recommendation
 
