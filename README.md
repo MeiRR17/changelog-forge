@@ -10,6 +10,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --repo .
     node bin/changelog-forge.js --from v1.2.0 --version 1.3.0
     node bin/changelog-forge.js --all --json
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
 
@@ -42,6 +43,21 @@ An example output:
 
 Commit SHA prefixes are included to keep entries traceable without inventing issue or PR links.
 
+## CI Conventional Commit audit
+
+Use `--check-conventional` on the same local Git range as the changelog. The tool checks that each commit subject uses a supported Conventional Commit type (such as `feat`, `fix`, `docs`, `ci` or `chore`), optional scope and a nonempty description.
+
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional
+
+The result contains **short commit hashes and finding codes only**, not raw message contents, author emails or changed code. Exit codes: **0** all subjects have an accepted conventional format, **1** at least one does not, **2** Git/usage/validation error. This is a *formatting audit*, not verification that commits truthfully describe code changes, or that release/version policy is correct.
+
+The mode is read-only; it does not generate release notes, edit files or create Git tags. It cannot be combined with `--json`, `--output`, `--version`, `--date`, `--recommend-from` or `--force`. Library callers can use:
+
+    import { auditConventionalCommits, auditText } from './src/lint.js';
+    const audit = auditConventionalCommits(commits);
+
+The audit's commit list is bounded to 3,000, matching the existing Git collection limit. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
+
 ## Optional SemVer recommendation
 
 `--recommend-from X.Y.Z` reads the same Conventional Commit range and **suggests** a next stable SemVer value. The input must be a stable `X.Y.Z` version without a `v` prefix. This option never edits package files, publishes a release or creates Git tags.
@@ -59,6 +75,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--all` — ignore the default most recent reachable tag and summarize all available commits
 - `--version X.Y.Z` — generate a release heading instead of Unreleased
 - `--recommend-from X.Y.Z` — add a **non-binding** stable SemVer recommendation based on the same commit range
+- `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only
 - `--date YYYY-MM-DD` — optional release heading date when version is specified
 - `--json` — emit structured JSON with groups, commit entries and Markdown text
 - `--output FILE` — save to a file instead of stdout
@@ -89,6 +106,7 @@ Date values in release headings are provided by the caller. Commit messages may 
 
 - `src/changelog.js` — parser, grouping and Markdown rendering
 - `src/version.js` — pure, conservative stable SemVer bump recommendation
+- `src/lint.js` — Conventional Commit formatting audit and redacted CI report
 - `bin/changelog-forge.js` — Git collector and CLI
 - `package.json` — Node.js 22+ package entry points
 - `LICENSE` — MIT
