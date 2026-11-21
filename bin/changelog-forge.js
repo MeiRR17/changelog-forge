@@ -94,11 +94,15 @@ function collect(repo, from, to, limit = 3000) {
   ];
   const output = runGit(repo, args);
   if (!output) return [];
-  return output.split('\x1e').map(item => item.trim()).filter(Boolean).flatMap(record => {
+  return output.split('\x1e').map(item => item.trim()).filter(Boolean).map(record => {
     const fields = record.split('\x1f');
-    if (fields.length < 3) return [];
+    // Do not silently discard malformed records and publish incomplete notes.
+    // Only the last field (body) is allowed to contain extra delimiters.
+    if (fields.length < 3 || !/^[a-f0-9]{40,64}$/i.test(fields[0])) {
+      throw new Error('Git log contained a malformed commit record. No release notes were generated.');
+    }
     const [hash, subject, ...body] = fields;
-    return [{ hash: hash.trim(), subject: subject.trim(), body: body.join('\x1f').trim() }];
+    return { hash, subject: subject.trim(), body: body.join('\x1f').trim() };
   });
 }
 
@@ -109,11 +113,11 @@ function main() {
   runGit(repo, ['rev-parse', '--is-inside-work-tree']);
   const from = options.all ? null : options.from ??
     runGit(repo, ['describe', '--tags', '--abbrev=0', options.to], true);
-  // Read one extra log entry in audit mode so a truncated range can never
-  // be mistaken for a fully passing compliance check.
-  const commits = collect(repo, from, options.to, options.checkConventional ? 3001 : 3000);
-  if (options.checkConventional && commits.length > 3000) {
-    throw new RangeError('More than 3,000 commits in the range. Narrow --from/--to before running a compliance check.');
+  // Read one extra record in *all* modes: release notes and CI auditing
+  // must never appear complete when a Git log limit was exceeded.
+  const commits = collect(repo, from, options.to, 3001);
+  if (commits.length > 3000) {
+    throw new RangeError('More than 3,000 commits in the range. Narrow --from/--to; no partial release notes or audit was generated.');
   }
   if (options.checkConventional) {
     const audit = auditConventionalCommits(commits, { requireScope: Boolean(options.requireScope) });
