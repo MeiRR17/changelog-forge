@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildChangelog } from '../src/changelog.js';
 import { recommendRelease } from '../src/version.js';
+import { auditConventionalCommits, auditText } from '../src/lint.js';
 
 const HELP = [
   'changelog-forge — Conventional Commits to Markdown release notes',
@@ -16,6 +17,7 @@ const HELP = [
   '  --all             Use entire available history instead of last reachable tag',
   '  --version X.Y.Z   Release version (default Unreleased)',
   '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
+  '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
   '  --date YYYY-MM-DD Release date (only used with --version)',
   '  --json            Print structured notes as JSON',
   '  --output FILE     Write to a file instead of stdout',
@@ -27,6 +29,7 @@ const HELP = [
   '  changelog-forge --from v1.2.0 --version 1.3.0',
   '  changelog-forge --all --json',
   '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
+  '  changelog-forge --from v1.2.0 --check-conventional',
   '  changelog-forge --output RELEASE_NOTES.md',
 ].join('\n');
 
@@ -58,6 +61,7 @@ function parseArgs(args) {
     if (flag === '--help' || flag === '-h') { opts.help = true; continue; }
     if (flag === '--all') { opts.all = true; continue; }
     if (flag === '--json') { opts.json = true; continue; }
+    if (flag === '--check-conventional') { opts.checkConventional = true; continue; }
     if (flag === '--force') { opts.force = true; continue; }
     if (!single.has(flag)) throw new Error('Unknown option: ' + flag + '. Try --help.');
     const value = args[++i];
@@ -67,6 +71,10 @@ function parseArgs(args) {
   if (opts.all && opts.from) throw new Error('Choose --all or --from, not both.');
   if (opts.date && !opts.version) throw new Error('--date requires --version.');
   if (opts.force && !opts.output) throw new Error('--force requires --output.');
+  if (opts.checkConventional && (opts.version || opts.date || opts.json || opts.output ||
+      opts.force || opts['recommend-from'])) {
+    throw new Error('--check-conventional is a read-only CI mode and cannot be combined with release or output flags.');
+  }
   safeRef(opts.to);
   if (opts.from) safeRef(opts.from);
   return opts;
@@ -97,6 +105,12 @@ function main() {
   const from = options.all ? null : options.from ??
     runGit(repo, ['describe', '--tags', '--abbrev=0', options.to], true);
   const commits = collect(repo, from, options.to);
+  if (options.checkConventional) {
+    const audit = auditConventionalCommits(commits);
+    process.stdout.write(auditText(audit));
+    if (!audit.compliant) process.exitCode = 1;
+    return;
+  }
   const report = buildChangelog(commits, { version: options.version || null, date: options.date || null });
   const recommendation = options['recommend-from']
     ? recommendRelease(commits, options['recommend-from']) : null;
@@ -123,5 +137,5 @@ function main() {
 try { main(); }
 catch (error) {
   process.stderr.write('changelog-forge: ' + (error.message || String(error)) + '\n');
-  process.exitCode = 1;
+  process.exitCode = 2;
 }
