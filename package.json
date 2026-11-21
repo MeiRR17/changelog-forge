@@ -1,0 +1,11 @@
+{
+  "name": "@meirr17/changelog-forge",
+  "version": "0.1.0",
+  "description": "Generate readable release notes from Conventional Commits in local Git history",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "exports": { ".": "./src/changelog.js" },
+  "bin": { "changelog-forge": "./bin/changelog-forge.js" },
+  "license": "MIT",
+  "files": ["src/", "bin/", "README.md", "LICENSE"]
+}
