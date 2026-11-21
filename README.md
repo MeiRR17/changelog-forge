@@ -11,6 +11,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --from v1.2.0 --version 1.3.0
     node bin/changelog-forge.js --all --json
     node bin/changelog-forge.js --from v1.2.0 --check-conventional
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-scope
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
 
@@ -51,6 +52,8 @@ Use `--check-conventional` on the same local Git range as the changelog. The too
 
 The result contains **short commit hashes and finding codes only**, not raw message contents, author emails or changed code. Exit codes: **0** all subjects have an accepted conventional format, **1** at least one does not, **2** Git/usage/validation error. This is a *formatting audit*, not verification that commits truthfully describe code changes, or that release/version policy is correct.
 
+Optional `--require-scope` enforces `type(scope): description` for teams that require scoped commits. The default still permits unscoped conventional commits. The audit also rejects headers whose description is only whitespace; findings are `SCOPE_REQUIRED` or `NON_CONVENTIONAL_SUBJECT` without exposing subject text.
+
 The mode is read-only; it does not generate release notes, edit files or create Git tags. It cannot be combined with `--json`, `--output`, `--version`, `--date`, `--recommend-from` or `--force`. Library callers can use:
 
     import { auditConventionalCommits, auditText } from './src/lint.js';
@@ -76,6 +79,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--version X.Y.Z` — generate a release heading instead of Unreleased
 - `--recommend-from X.Y.Z` — add a **non-binding** stable SemVer recommendation based on the same commit range
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only
+- `--require-scope` — only with `--check-conventional`, require a nonempty scope on every commit
 - `--date YYYY-MM-DD` — optional release heading date when version is specified
 - `--json` — emit structured JSON with groups, commit entries and Markdown text
 - `--output FILE` — save to a file instead of stdout
