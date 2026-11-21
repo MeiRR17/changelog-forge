@@ -80,11 +80,11 @@ function parseArgs(args) {
   return opts;
 }
 
-function collect(repo, from, to) {
+function collect(repo, from, to, limit = 3000) {
   const args = [
     'log', '--no-merges',
     '--format=%H%x1f%s%x1f%b%x1e',
-    '--max-count=3000',
+    '--max-count=' + limit,
     from ? from + '..' + to : to,
   ];
   const output = runGit(repo, args);
@@ -104,7 +104,12 @@ function main() {
   runGit(repo, ['rev-parse', '--is-inside-work-tree']);
   const from = options.all ? null : options.from ??
     runGit(repo, ['describe', '--tags', '--abbrev=0', options.to], true);
-  const commits = collect(repo, from, options.to);
+  // Read one extra log entry in audit mode so a truncated range can never
+  // be mistaken for a fully passing compliance check.
+  const commits = collect(repo, from, options.to, options.checkConventional ? 3001 : 3000);
+  if (options.checkConventional && commits.length > 3000) {
+    throw new RangeError('More than 3,000 commits in the range. Narrow --from/--to before running a compliance check.');
+  }
   if (options.checkConventional) {
     const audit = auditConventionalCommits(commits);
     process.stdout.write(auditText(audit));
