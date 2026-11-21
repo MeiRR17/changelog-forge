@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildChangelog } from '../src/changelog.js';
+import { recommendRelease } from '../src/version.js';
 
 const HELP = [
   'changelog-forge — Conventional Commits to Markdown release notes',
@@ -14,6 +15,7 @@ const HELP = [
   '  --to REF          End ref (default HEAD)',
   '  --all             Use entire available history instead of last reachable tag',
   '  --version X.Y.Z   Release version (default Unreleased)',
+  '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
   '  --date YYYY-MM-DD Release date (only used with --version)',
   '  --json            Print structured notes as JSON',
   '  --output FILE     Write to a file instead of stdout',
@@ -24,6 +26,7 @@ const HELP = [
   '  changelog-forge --repo .',
   '  changelog-forge --from v1.2.0 --version 1.3.0',
   '  changelog-forge --all --json',
+  '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
   '  changelog-forge --output RELEASE_NOTES.md',
 ].join('\n');
 
@@ -49,7 +52,7 @@ function runGit(repo, args, optional = false) {
 
 function parseArgs(args) {
   const opts = { repo: '.', to: 'HEAD', all: false, json: false, force: false };
-  const single = new Set(['--repo', '--from', '--to', '--version', '--date', '--output']);
+  const single = new Set(['--repo', '--from', '--to', '--version', '--date', '--output', '--recommend-from']);
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
     if (flag === '--help' || flag === '-h') { opts.help = true; continue; }
@@ -95,9 +98,22 @@ function main() {
     runGit(repo, ['describe', '--tags', '--abbrev=0', options.to], true);
   const commits = collect(repo, from, options.to);
   const report = buildChangelog(commits, { version: options.version || null, date: options.date || null });
+  const recommendation = options['recommend-from']
+    ? recommendRelease(commits, options['recommend-from']) : null;
+  let markdown = report.markdown;
+  if (recommendation) {
+    const detail = recommendation.nextVersion
+      ? 'Suggested next version: **' + recommendation.nextVersion + '** (' + recommendation.bump + ')'
+      : 'No SemVer release is indicated by these commits.';
+    const lines = markdown.split('\n');
+    const insertAt = lines.findIndex(line => line.startsWith('## '));
+    if (insertAt >= 0) lines.splice(insertAt + 2, 0,
+      '> ' + detail + '. **Advisory only:** verify your release policy before tagging.\n');
+    markdown = lines.join('\n');
+  }
   const output = options.json ?
-    JSON.stringify({ from: from || null, to: options.to, ...report }, null, 2) + '\n' :
-    report.markdown;
+    JSON.stringify({ from: from || null, to: options.to, ...report, ...(recommendation ? { recommendation } : {}) }, null, 2) + '\n' :
+    markdown;
   if (options.output) {
     writeFileSync(options.output, output, { encoding: 'utf8', flag: options.force ? 'w' : 'wx' });
     process.stderr.write('Wrote ' + commits.length + ' commits to ' + options.output + '\n');
