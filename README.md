@@ -117,7 +117,7 @@ Without `--force`, an existing output file is never overwritten. The CLI skips m
     ]);
     process.stdout.write(result.markdown);
 
-The library works entirely on supplied strings and objects without Git access. Its Markdown output escapes formatting characters from commit descriptions and scope names.
+The library works entirely on supplied strings and objects without Git access. Its Markdown output escapes formatting characters from commit descriptions and scope names. Both `buildChangelog()` and `recommendRelease()` now validate **previously parsed** commit objects via the shared `normalizeCommitEntry()` helper instead of trusting the presence of a `shortHash` field. Inconsistent SHA prefixes, invalid group types, missing descriptions and malformed breaking notes are rejected rather than causing misleading release grouping or recommendations. Raw `{ hash, subject, body }` Git entries keep their existing parsing behavior. This is structural validation, not proof that commit text or metadata is authentic.
 
 ## Scope and cautions
 

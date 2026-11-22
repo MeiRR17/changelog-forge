@@ -1,4 +1,4 @@
-import { parseCommit } from './changelog.js';
+import { normalizeCommitEntry } from './changelog.js';
 
 /**
  * Pure, conservative SemVer release recommendation.
@@ -37,8 +37,7 @@ function nextVersion(parts, bump) {
 export function recommendRelease(commits, currentVersion) {
   if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');
   const parsedVersion = parseStableVersion(currentVersion);
-  const changes = commits.map(commit => commit && typeof commit === 'object' && 'shortHash' in commit
-    ? commit : parseCommit(commit));
+  const changes = commits.map(normalizeCommitEntry);
   const counts = { breaking: 0, features: 0, fixes: 0, performance: 0, other: 0 };
   for (const commit of changes) {
     if (commit.breaking) counts.breaking++;

@@ -55,6 +55,40 @@ export function parseCommit(commit) {
   };
 }
 
+/**
+ * Accept raw Git records or already parsed entries, but never use the
+ * presence of a truthy shortHash as a trust boundary. Callers may pass
+ * JSON-deserialized or otherwise edited parsed entries; their shape must
+ * be validated before Markdown grouping or SemVer release calculation.
+ * This checks only internal structure, not authenticity of Git history.
+ */
+export function normalizeCommitEntry(commit) {
+  if (!commit || typeof commit !== 'object' || Array.isArray(commit)) {
+    throw new TypeError('Commit must be an object.');
+  }
+  if (!Object.hasOwn(commit, 'shortHash')) return parseCommit(commit);
+
+  const { hash, shortHash, type, originalType, scope, description,
+    breaking, breakingNotes } = commit;
+  if (typeof hash !== 'string' || !/^[a-f0-9]{7,64}$/i.test(hash) ||
+      shortHash !== hash.slice(0, 7) ||
+      typeof originalType !== 'string' ||
+      !/^[a-z][a-z0-9-]*$/.test(originalType) ||
+      type !== (NAMES.has(originalType) ? originalType : 'other') ||
+      typeof scope !== 'string' || scope.length > 80 || /[()\r\n]/.test(scope) ||
+      typeof description !== 'string' || !description.trim() ||
+      description.length > 100_000 ||
+      typeof breaking !== 'boolean' || !Array.isArray(breakingNotes) ||
+      breakingNotes.length > 3000 ||
+      breakingNotes.some(note => typeof note !== 'string' || !note.trim() ||
+        note.length > 100_000) ||
+      (breakingNotes.length > 0 && !breaking)) {
+    throw new TypeError('Invalid parsed commit metadata.');
+  }
+  return { hash, shortHash, type, originalType, scope, description,
+    breaking, breakingNotes: [...breakingNotes] };
+}
+
 const INLINE_ESCAPE = /([\\\x60*_{}\[\]<>|])/g;
 function safeMd(value) {
   return String(value).replace(/\s+/g, ' ').trim().replace(INLINE_ESCAPE, '\\$1');
@@ -99,7 +133,7 @@ export function buildChangelog(commits, { version = null, date = null } = {}) {
   if (date !== null && (typeof date !== 'string' || !validReleaseDate(date))) {
     throw new RangeError('Release date must be a real YYYY-MM-DD calendar date.');
   }
-  const parsed = commits.map(c => c.shortHash ? c : parseCommit(c));
+  const parsed = commits.map(normalizeCommitEntry);
   const groups = GROUPS.map(([type, title]) => ({ type, title, commits: [] }));
   groups.push({ type: 'other', title: 'Other Changes', commits: [] });
   const breaking = [];
