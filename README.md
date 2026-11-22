@@ -76,11 +76,11 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--from REF` — exclusive start ref (tag, branch or commit)
 - `--to REF` — inclusive end ref, default HEAD
 - `--all` — ignore the default most recent reachable tag and summarize all available commits
-- `--version X.Y.Z` — generate a release heading instead of Unreleased
+- `--version X.Y.Z` — generate a release heading instead of Unreleased; validates full SemVer syntax, including prerelease/build metadata, and rejects numeric prerelease identifiers with leading zeros
 - `--recommend-from X.Y.Z` — add a **non-binding** stable SemVer recommendation based on the same commit range
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only
 - `--require-scope` — only with `--check-conventional`, require a nonempty scope on every commit
-- `--date YYYY-MM-DD` — optional release heading date when version is specified
+- `--date YYYY-MM-DD` — optional release heading date when version is specified; rejects impossible dates (including non-leap-year February 29)
 - `--json` — emit structured JSON with groups, commit entries and Markdown text
 - `--output FILE` — save to a file instead of stdout
 - `--force` — explicitly permit overwriting an existing output file
@@ -102,7 +102,7 @@ The library works entirely on supplied strings and objects without Git access. I
 
 This tool **does not** create a GitHub release, publish a package, update version numbers, create tags, or mutate repository history. It only reads local Git history and renders notes.
 
-Date values in release headings are provided by the caller. Commit messages may contain private information: review generated notes before publishing them externally.
+Date values in release headings are provided by the caller and are checked for real Gregorian calendar validity. A syntactically valid release date does not certify when a release actually happened. Commit messages may contain private information: review generated notes before publishing them externally.
 
 **Implementation-only status:** The owner requested that automated tests be deferred until a consolidated testing round. This version has not been validated for production use.
 

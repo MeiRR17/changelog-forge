@@ -66,15 +66,38 @@ function bullet(commit, includeHash = true) {
     (includeHash ? ' (' + commit.shortHash + ')' : '');
 }
 
+
+/**
+ * Strict release heading metadata. SemVer core numbers and numeric prerelease
+ * identifiers cannot have leading zeroes; build identifiers may have them.
+ * This is independent of the optional stable-version bump recommender.
+ */
+function validReleaseVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version);
+  if (!match) return false;
+  const prerelease = match[4];
+  return !prerelease || prerelease.split('.').every(identifier =>
+    !/^\d+$/.test(identifier) || identifier === '0' || identifier[0] !== '0');
+}
+function validReleaseDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [year, month, day] = date.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const instant = new Date(0);
+  instant.setUTCHours(0, 0, 0, 0);
+  instant.setUTCFullYear(year, month - 1, day);
+  return instant.getUTCFullYear() === year &&
+    instant.getUTCMonth() + 1 === month && instant.getUTCDate() === day;
+}
+
 /** Summarize a list of commits, preserving incoming commit order. */
 export function buildChangelog(commits, { version = null, date = null } = {}) {
   if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');
-  if (version !== null && (typeof version !== 'string' ||
-    !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(version))) {
-    throw new RangeError('Version must be SemVer (for example 1.2.3).');
+  if (version !== null && (typeof version !== 'string' || !validReleaseVersion(version))) {
+    throw new RangeError('Version must be valid SemVer, for example 1.2.3, 1.2.3-rc.1, or 1.2.3+build.4.');
   }
-  if (date !== null && (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
-    throw new RangeError('Date must be YYYY-MM-DD.');
+  if (date !== null && (typeof date !== 'string' || !validReleaseDate(date))) {
+    throw new RangeError('Release date must be a real YYYY-MM-DD calendar date.');
   }
   const parsed = commits.map(c => c.shortHash ? c : parseCommit(c));
   const groups = GROUPS.map(([type, title]) => ({ type, title, commits: [] }));
