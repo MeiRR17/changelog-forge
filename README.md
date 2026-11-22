@@ -19,7 +19,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
 
-The default uses commits between the most recent reachable tag and HEAD. If no tag can be found, it uses the available local history. This tool does not fetch, clone, or push anything.
+The default uses commits between the most recent reachable tag and HEAD. If no tag can be found, it uses the available local history. Before reading commits, the CLI now requires the start ref (`--from` or the discovered tag) to be an **ancestor** of the selected end ref (`--to`, default `HEAD`). Git ordinarily allows `A..B` even when branches have diverged; this tool rejects such non-sequential ranges with exit status **2** rather than publishing misleading release notes, a SemVer recommendation or an incomplete Conventional Commit audit. Equal start/end refs are allowed and produce an empty range. Use an ancestor tag or commit, or choose `--all` to inspect all history reachable from the selected end. The ancestry check uses local Git metadata only; no tags or history are changed. This tool does not fetch, clone, or push anything.
 
 ## Supported commit messages
 

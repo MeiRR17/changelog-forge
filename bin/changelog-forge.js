@@ -62,6 +62,25 @@ function runGit(repo, args, optional = false) {
   return result.stdout.trim();
 }
 
+/**
+ * A changelog describes changes *since* an earlier point on the same
+ * history. Git's A..B syntax also accepts diverged refs, but then silently
+ * subtracts commits from an unrelated line of development. Refuse that
+ * misleading range rather than claim a complete sequential release.
+ */
+function requireAncestor(repo, from, to) {
+  if (!from) return; // --all / no reachable tag includes all history.
+  const result = spawnSync('git', ['-C', repo, 'merge-base', '--is-ancestor', from, to], {
+    encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024,
+  });
+  if (result.error) throw new Error('Git ancestry check failed: ' + result.error.message);
+  if (result.status === 0) return;
+  if (result.status === 1) {
+    throw new Error('The start ref is not an ancestor of the end ref. Select a reachable --from ref; no partial release notes or audit were produced.');
+  }
+  throw new Error('Unable to verify release range ancestry; check that both refs resolve to commits.');
+}
+
 function parseArgs(args) {
   const opts = { repo: '.', to: 'HEAD', all: false, json: false, force: false };
   const single = new Set(['--repo', '--from', '--to', '--version', '--date', '--output', '--recommend-from']);
@@ -133,6 +152,10 @@ function main() {
   runGit(repo, ['rev-parse', '--is-inside-work-tree']);
   const from = options.all ? null : options.from ??
     runGit(repo, ['describe', '--tags', '--abbrev=0', options.to], true);
+  // Fail closed when an explicit start ref is on a different history line.
+  // A reachable tag is normally an ancestor, but enforce the same contract
+  // for explicit and automatically discovered starting points.
+  requireAncestor(repo, from, options.to);
   // Read one extra record in *all* modes: release notes and CI auditing
   // must never appear complete when a Git log limit was exceeded.
   const commits = collect(repo, from, options.to, 3001);
