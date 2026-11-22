@@ -15,6 +15,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-breaking-note
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --json
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --summary-only --json
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional --summary-only --csv
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
 
@@ -72,6 +73,12 @@ For CI artifacts that must not disclose even short commit hashes or individual o
 
 `--summary-only` requires `--check-conventional` and is incompatible with release-note generation. It does not alter the existing audit exit statuses: `0` for full compliance, `1` for at least one format violation, `2` for Git/usage/collection errors. It still scans the **entire requested range** with the existing 3,000-commit bound and never suppresses failures. `auditCountsOnly(report)` and `auditCountsOnlyText(report)` are pure library projections of an `auditConventionalCommits()` result and reject inconsistent totals before serialization.
 
+### Spreadsheet-ready aggregate CI reporting
+
+Use `--check-conventional --summary-only --csv` to emit a **single bounded, UTF-8 BOM-prefixed CSV record** suitable for a local spreadsheet or CI history dashboard. The stable header includes total, passed, failed, compliant, breaking-marked count, selected scope/breaking-note policies, one `accepted_<type>` column per supported Conventional Commit type and one `violation_<code>` column per fixed violation code. Even a compliant or empty commit range produces the same columns, including zero-valued categories. Each field is a fixed program-generated identifier, boolean or bounded integer rather than commit-controlled content; all fields are also CSV-quoted. CRLF line endings are used for spreadsheet import.
+
+CSV remains a **counts-only** report: no commit hashes, indices, subjects, bodies, author information or source paths are serialized. Aggregate activity can nevertheless be sensitive. `--csv` is valid **only** with `--check-conventional --summary-only` and cannot be combined with `--json`; invalid combinations return usage status **2**. Existing CI semantics remain unchanged: **0** for full compliance, **1** for any audit violation and **2** for Git/usage/collection errors. Output goes to stdout without writing files or modifying history. Library callers can use `auditCountsOnlyCsv(report)` alongside the existing JSON and text projections.
+
 ## Optional SemVer recommendation
 
 `--recommend-from X.Y.Z` reads the same Conventional Commit range and **suggests** a next stable SemVer value. The input must be a stable `X.Y.Z` version without a `v` prefix. This option never edits package files, publishes a release or creates Git tags.
@@ -92,7 +99,8 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only (plain text or, with `--json`, structured redacted audit results)
 - `--require-scope` — only with `--check-conventional`, require a nonempty scope on every commit
 - `--require-breaking-note` — only with `--check-conventional`, require an explanatory nonempty breaking-change footer/body paragraph for every breaking commit
-- `--summary-only` — only with `--check-conventional`, output a hash-free aggregate audit (with optional `--json`) while preserving failure exit status
+- `--summary-only` — only with `--check-conventional`, output a hash-free aggregate audit (with optional `--json` or `--csv`) while preserving failure exit status
+- `--csv` — only with `--check-conventional --summary-only`, a fixed-schema spreadsheet row; cannot be combined with `--json`
 - `--date YYYY-MM-DD` — optional release heading date when version is specified; rejects impossible dates (including non-leap-year February 29)
 - `--json` — emit structured changelog JSON with groups, commit entries and Markdown text; with `--check-conventional`, emit redacted audit JSON instead
 - `--output FILE` — save to a file instead of stdout
@@ -123,7 +131,7 @@ Date values in release headings are provided by the caller and are checked for r
 
 - `src/changelog.js` — parser, grouping and Markdown rendering
 - `src/version.js` — pure, conservative stable SemVer bump recommendation
-- `src/lint.js` — Conventional Commit formatting audit, redacted per-commit CI report and aggregate-only summary
+- `src/lint.js` — Conventional Commit formatting audit, redacted per-commit CI report and aggregate-only text/JSON/CSV summaries
 - `bin/changelog-forge.js` — Git collector and CLI
 - `package.json` — Node.js 22+ package entry points
 - `LICENSE` — MIT

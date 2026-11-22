@@ -159,3 +159,36 @@ export function auditCountsOnlyText(report) {
   if (summary.failed) lines.push('Commit subject policy failed. No files or commits were modified.');
   return lines.join('\n') + '\n';
 }
+
+
+/**
+ * Stable one-row CSV for machine-readable CI trend dashboards.
+ * Every cell is a trusted format identifier, literal boolean or bounded
+ * numeric audit value: no commit subjects, authors, hashes, indices, bodies,
+ * per-commit details or filenames can reach this output.
+ *
+ * Columns are fixed even when all commits pass or the range is empty.
+ */
+export function auditCountsOnlyCsv(report) {
+  const summary = auditCountsOnly(report); // validates aggregate consistency
+  const typeHeaders = [...TYPES].map(type => 'accepted_' + type);
+  const violationHeaders = AUDIT_CODES.map(code => 'violation_' + code.toLowerCase());
+  const headings = [
+    'format', 'total', 'passed', 'failed', 'compliant', 'breaking_marked',
+    'require_scope', 'require_breaking_note',
+    ...typeHeaders, ...violationHeaders,
+  ];
+  const values = [
+    summary.format, summary.total, summary.passed, summary.failed,
+    summary.compliant, summary.breakingMarked, summary.requireScope,
+    summary.requireBreakingNote,
+    ...[...TYPES].map(type => summary.passedByType[type]),
+    ...AUDIT_CODES.map(code => summary.violationsByCode[code]),
+  ];
+  if (headings.length !== values.length) {
+    throw new TypeError('Audit columns do not match the values.');
+  }
+  return '\uFEFF' + [headings, values].map(row => row.map(value =>
+    '"' + String(value).replaceAll('"', '""') + '"'
+  ).join(',')).join('\r\n') + '\r\n';
+}
