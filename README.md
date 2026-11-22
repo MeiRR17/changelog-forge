@@ -14,6 +14,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-scope
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-breaking-note
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --json
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional --summary-only --json
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
 
@@ -65,6 +66,12 @@ The mode is read-only; it does not generate release notes, edit files or create 
 
 The audit's commit list is bounded to 3,000. As with changelog generation, the CLI fetches **one additional record** to detect oversized ranges and fails with exit code **2** instead of reporting success after silently checking a truncated subset. Narrow `--from`/`--to` when needed. Atypical custom Conventional Commit types are reported as unsupported by the current configured type list.
 
+### Aggregate-only CI audit
+
+For CI artifacts that must not disclose even short commit hashes or individual ordinal positions, use `--check-conventional --summary-only`. This prints **counts only**: total/passed/failed, number of breaking-marked messages, accepted counts by conventional type, violation counts by fixed error code and the selected `--require-scope` / `--require-breaking-note` policy. Adding `--json` produces the versioned `changelog-forge-conventional-audit-counts-v1` format, suitable for dashboards. Neither form includes commit hashes, subjects, author identities, individual indices, commit bodies, or the contents of violations. Even aggregate counts can reveal development activity.
+
+`--summary-only` requires `--check-conventional` and is incompatible with release-note generation. It does not alter the existing audit exit statuses: `0` for full compliance, `1` for at least one format violation, `2` for Git/usage/collection errors. It still scans the **entire requested range** with the existing 3,000-commit bound and never suppresses failures. `auditCountsOnly(report)` and `auditCountsOnlyText(report)` are pure library projections of an `auditConventionalCommits()` result and reject inconsistent totals before serialization.
+
 ## Optional SemVer recommendation
 
 `--recommend-from X.Y.Z` reads the same Conventional Commit range and **suggests** a next stable SemVer value. The input must be a stable `X.Y.Z` version without a `v` prefix. This option never edits package files, publishes a release or creates Git tags.
@@ -85,6 +92,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only (plain text or, with `--json`, structured redacted audit results)
 - `--require-scope` — only with `--check-conventional`, require a nonempty scope on every commit
 - `--require-breaking-note` — only with `--check-conventional`, require an explanatory nonempty breaking-change footer/body paragraph for every breaking commit
+- `--summary-only` — only with `--check-conventional`, output a hash-free aggregate audit (with optional `--json`) while preserving failure exit status
 - `--date YYYY-MM-DD` — optional release heading date when version is specified; rejects impossible dates (including non-leap-year February 29)
 - `--json` — emit structured changelog JSON with groups, commit entries and Markdown text; with `--check-conventional`, emit redacted audit JSON instead
 - `--output FILE` — save to a file instead of stdout
@@ -115,7 +123,7 @@ Date values in release headings are provided by the caller and are checked for r
 
 - `src/changelog.js` — parser, grouping and Markdown rendering
 - `src/version.js` — pure, conservative stable SemVer bump recommendation
-- `src/lint.js` — Conventional Commit formatting audit and redacted CI report
+- `src/lint.js` — Conventional Commit formatting audit, redacted per-commit CI report and aggregate-only summary
 - `bin/changelog-forge.js` — Git collector and CLI
 - `package.json` — Node.js 22+ package entry points
 - `LICENSE` — MIT

@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { buildChangelog } from '../src/changelog.js';
 import { recommendRelease } from '../src/version.js';
-import { auditConventionalCommits, auditText } from '../src/lint.js';
+import { auditConventionalCommits, auditText, auditCountsOnly, auditCountsOnlyText } from '../src/lint.js';
 
 const HELP = [
   'changelog-forge — Conventional Commits to Markdown release notes',
@@ -19,6 +19,7 @@ const HELP = [
   '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
   '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
   '  --check-conventional --json  Emit redacted machine-readable CI results',
+  '  --summary-only           With CI audit: only aggregate counts; no commit hashes or indices',
   '  --require-scope          In CI check mode, demand type(scope): description',
   '  --require-breaking-note  In CI mode, require an explanatory BREAKING CHANGE body note',
   '  --date YYYY-MM-DD Release date (only used with --version)',
@@ -34,6 +35,7 @@ const HELP = [
   '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
   '  changelog-forge --from v1.2.0 --check-conventional',
   '  changelog-forge --from v1.2.0 --check-conventional --json',
+  '  changelog-forge --from v1.2.0 --check-conventional --summary-only --json',
   '  changelog-forge --from v1.2.0 --check-conventional --require-breaking-note --json',
   '  changelog-forge --output RELEASE_NOTES.md',
 ].join('\n');
@@ -67,6 +69,7 @@ function parseArgs(args) {
     if (flag === '--all') { opts.all = true; continue; }
     if (flag === '--json') { opts.json = true; continue; }
     if (flag === '--check-conventional') { opts.checkConventional = true; continue; }
+    if (flag === '--summary-only') { opts.summaryOnly = true; continue; }
     if (flag === '--require-scope') { opts.requireScope = true; continue; }
     if (flag === '--require-breaking-note') { opts.requireBreakingNote = true; continue; }
     if (flag === '--force') { opts.force = true; continue; }
@@ -78,6 +81,9 @@ function parseArgs(args) {
   if (opts.all && opts.from) throw new Error('Choose --all or --from, not both.');
   if (opts.date && !opts.version) throw new Error('--date requires --version.');
   if (opts.force && !opts.output) throw new Error('--force requires --output.');
+  if (opts.summaryOnly && !opts.checkConventional) {
+    throw new Error('--summary-only requires --check-conventional.');
+  }
   if (opts.requireScope && !opts.checkConventional) {
     throw new Error('--require-scope requires --check-conventional.');
   }
@@ -134,7 +140,9 @@ function main() {
     });
     // The audit object contains only counts, short hashes and finding codes.
     // Do not print Git subjects, bodies or author metadata in CI JSON mode.
-    process.stdout.write(options.json ? JSON.stringify(audit, null, 2) + '\n' : auditText(audit));
+    process.stdout.write(options.json ?
+      JSON.stringify(options.summaryOnly ? auditCountsOnly(audit) : audit, null, 2) + '\n' :
+      options.summaryOnly ? auditCountsOnlyText(audit) : auditText(audit));
     if (!audit.compliant) process.exitCode = 1;
     return;
   }

@@ -82,3 +82,80 @@ export function auditText(report) {
   if (report.failed) lines.push('Fix the message format before releasing. No commits were changed.');
   return lines.join('\n') + '\n';
 }
+
+
+/**
+ * Hash-free aggregate audit for logs shared outside the development team.
+ * Never copies per-commit indices, subjects, hashes, bodies or descriptions
+ * into the output. This is an opt-in alternative to per-commit diagnostics.
+ */
+const AUDIT_CODES = Object.freeze([
+  'NON_CONVENTIONAL_SUBJECT', 'SCOPE_REQUIRED', 'BREAKING_NOTE_REQUIRED',
+]);
+export function auditCountsOnly(report) {
+  if (!report || typeof report !== 'object' ||
+      !Array.isArray(report.violations) || report.violations.length > MAX_COMMITS ||
+      ![report.total, report.passed, report.failed, report.breaking].every(n =>
+        Number.isSafeInteger(n) && n >= 0 && n <= MAX_COMMITS) ||
+      report.total !== report.passed + report.failed ||
+      report.failed !== report.violations.length ||
+      report.breaking > report.total ||
+      typeof report.requireScope !== 'boolean' ||
+      typeof report.requireBreakingNote !== 'boolean' ||
+      report.compliant !== (report.failed === 0) ||
+      !report.counts || typeof report.counts !== 'object') {
+    throw new TypeError('Expected a bounded Conventional Commit audit.');
+  }
+  const passedByType = Object.fromEntries([...TYPES].map(type => {
+    const count = report.counts[type];
+    if (!Number.isSafeInteger(count) || count < 0 || count > MAX_COMMITS) {
+      throw new TypeError('Invalid passed-commit category count.');
+    }
+    return [type, count];
+  }));
+  if (Object.values(passedByType).reduce((a,b) => a + b, 0) !== report.passed) {
+    throw new TypeError('Passed-commit categories do not reconcile.');
+  }
+  const violationsByCode = Object.fromEntries(AUDIT_CODES.map(code => [code, 0]));
+  for (const issue of report.violations) {
+    if (!issue || typeof issue !== 'object' ||
+        !Object.hasOwn(violationsByCode, issue.code)) {
+      throw new TypeError('Unknown Conventional Commit violation code.');
+    }
+    violationsByCode[issue.code]++;
+  }
+  return {
+    format: 'changelog-forge-conventional-audit-counts-v1',
+    total: report.total,
+    passed: report.passed,
+    failed: report.failed,
+    compliant: report.compliant,
+    breakingMarked: report.breaking,
+    requireScope: report.requireScope,
+    requireBreakingNote: report.requireBreakingNote,
+    passedByType,
+    violationsByCode,
+    advisory: 'Counts-only format audit. No commit messages, hashes, indices, authors or code. Totals can still disclose activity.',
+  };
+}
+
+/** Text projection of the same validated summary, with no commit IDs. */
+export function auditCountsOnlyText(report) {
+  const summary = auditCountsOnly(report);
+  const lines = [
+    'Conventional Commit counts-only audit: ' +
+      summary.passed + '/' + summary.total + ' passed.',
+    'Breaking-marked commits: ' + summary.breakingMarked,
+    'Accepted by type:',
+  ];
+  for (const [type, count] of Object.entries(summary.passedByType)) {
+    if (count) lines.push('  ' + type + ': ' + count);
+  }
+  lines.push('Failures by code:');
+  if (!summary.failed) lines.push('  none');
+  for (const [code, count] of Object.entries(summary.violationsByCode)) {
+    if (count) lines.push('  ' + code + ': ' + count);
+  }
+  if (summary.failed) lines.push('Commit subject policy failed. No files or commits were modified.');
+  return lines.join('\n') + '\n';
+}
