@@ -14,8 +14,9 @@ const MAX_COMMITS = 3000;
  * description and the parser recognizes its scope/breaking marker syntax.
  * This audits formatting only, not the truthfulness of developer claims.
  */
-export function auditConventionalCommits(commits, { requireScope = false } = {}) {
+export function auditConventionalCommits(commits, { requireScope = false, requireBreakingNote = false } = {}) {
   if (typeof requireScope !== 'boolean') throw new TypeError('requireScope must be boolean.');
+  if (typeof requireBreakingNote !== 'boolean') throw new TypeError('requireBreakingNote must be boolean.');
   if (!Array.isArray(commits) || commits.length > MAX_COMMITS) {
     throw new RangeError('Audit accepts up to 3,000 commits.');
   }
@@ -40,6 +41,13 @@ export function auditConventionalCommits(commits, { requireScope = false } = {})
         code: 'SCOPE_REQUIRED',
         reason: 'The current CI policy requires type(scope): description.',
       });
+    } else if (requireBreakingNote && parsed.breaking && !parsed.breakingNotes.length) {
+      violations.push({
+        hash: parsed.shortHash,
+        index: index + 1,
+        code: 'BREAKING_NOTE_REQUIRED',
+        reason: 'A breaking commit requires a nonempty BREAKING CHANGE: explanation in its body.',
+      });
     } else {
       counts[parsed.type]++;
     }
@@ -51,6 +59,7 @@ export function auditConventionalCommits(commits, { requireScope = false } = {})
     compliant: violations.length === 0,
     breaking,
     requireScope,
+    requireBreakingNote,
     counts,
     violations,
     advisory: 'Formatting audit only; commit message bodies and code changes are not verified.',

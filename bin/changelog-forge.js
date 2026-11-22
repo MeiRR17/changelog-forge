@@ -20,6 +20,7 @@ const HELP = [
   '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
   '  --check-conventional --json  Emit redacted machine-readable CI results',
   '  --require-scope          In CI check mode, demand type(scope): description',
+  '  --require-breaking-note  In CI mode, require an explanatory BREAKING CHANGE body note',
   '  --date YYYY-MM-DD Release date (only used with --version)',
   '  --json            Print structured notes as JSON',
   '  --output FILE     Write to a file instead of stdout',
@@ -33,6 +34,7 @@ const HELP = [
   '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
   '  changelog-forge --from v1.2.0 --check-conventional',
   '  changelog-forge --from v1.2.0 --check-conventional --json',
+  '  changelog-forge --from v1.2.0 --check-conventional --require-breaking-note --json',
   '  changelog-forge --output RELEASE_NOTES.md',
 ].join('\n');
 
@@ -66,6 +68,7 @@ function parseArgs(args) {
     if (flag === '--json') { opts.json = true; continue; }
     if (flag === '--check-conventional') { opts.checkConventional = true; continue; }
     if (flag === '--require-scope') { opts.requireScope = true; continue; }
+    if (flag === '--require-breaking-note') { opts.requireBreakingNote = true; continue; }
     if (flag === '--force') { opts.force = true; continue; }
     if (!single.has(flag)) throw new Error('Unknown option: ' + flag + '. Try --help.');
     const value = args[++i];
@@ -77,6 +80,9 @@ function parseArgs(args) {
   if (opts.force && !opts.output) throw new Error('--force requires --output.');
   if (opts.requireScope && !opts.checkConventional) {
     throw new Error('--require-scope requires --check-conventional.');
+  }
+  if (opts.requireBreakingNote && !opts.checkConventional) {
+    throw new Error('--require-breaking-note requires --check-conventional.');
   }
   if (opts.checkConventional && (opts.version || opts.date || opts.output ||
       opts.force || opts['recommend-from'])) {
@@ -122,7 +128,10 @@ function main() {
     throw new RangeError('More than 3,000 commits in the range. Narrow --from/--to; no partial release notes or audit was generated.');
   }
   if (options.checkConventional) {
-    const audit = auditConventionalCommits(commits, { requireScope: Boolean(options.requireScope) });
+    const audit = auditConventionalCommits(commits, {
+      requireScope: Boolean(options.requireScope),
+      requireBreakingNote: Boolean(options.requireBreakingNote),
+    });
     // The audit object contains only counts, short hashes and finding codes.
     // Do not print Git subjects, bodies or author metadata in CI JSON mode.
     process.stdout.write(options.json ? JSON.stringify(audit, null, 2) + '\n' : auditText(audit));

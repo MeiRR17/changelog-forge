@@ -12,6 +12,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --all --json
     node bin/changelog-forge.js --from v1.2.0 --check-conventional
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-scope
+    node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-breaking-note
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --json
     node bin/changelog-forge.js --from v1.2.0 --recommend-from 1.2.0
     node bin/changelog-forge.js --output RELEASE_NOTES.md
@@ -55,6 +56,8 @@ The result contains **short commit hashes and finding codes only**, not raw mess
 
 Optional `--require-scope` enforces `type(scope): description` for teams that require scoped commits. The default still permits unscoped conventional commits. The audit also rejects headers whose description is only whitespace; findings are `SCOPE_REQUIRED` or `NON_CONVENTIONAL_SUBJECT` without exposing subject text.
 
+**Optional breaking-note policy:** `--require-breaking-note` enforces a nonempty `BREAKING CHANGE:` (or `BREAKING-CHANGE:`) explanation in the commit body for every otherwise valid Conventional Commit marked breaking, including `feat(api)!: ...`. An exclamation mark alone is allowed by Conventional Commits but is insufficient **when this stricter opt-in team policy is enabled**. The policy accepts an indented continuation of an explanatory breaking-note paragraph, but not an empty marker. Violations use the code `BREAKING_NOTE_REQUIRED`; output never includes the explanatory text. This can be combined with `--require-scope` and `--json`. Library callers can pass `{ requireBreakingNote: true }` to `auditConventionalCommits()`. This is a format policy, not proof of migration impact.
+
 The mode is read-only; it does not generate release notes, edit files or create Git tags. It cannot be combined with `--output`, `--version`, `--date`, `--recommend-from` or `--force`; `--json` is permitted specifically to produce a redacted machine-readable audit. Library callers can use:
 
     import { auditConventionalCommits, auditText } from './src/lint.js';
@@ -81,6 +84,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--recommend-from X.Y.Z` — add a **non-binding** stable SemVer recommendation based on the same commit range
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only (plain text or, with `--json`, structured redacted audit results)
 - `--require-scope` — only with `--check-conventional`, require a nonempty scope on every commit
+- `--require-breaking-note` — only with `--check-conventional`, require an explanatory nonempty breaking-change footer/body paragraph for every breaking commit
 - `--date YYYY-MM-DD` — optional release heading date when version is specified; rejects impossible dates (including non-leap-year February 29)
 - `--json` — emit structured changelog JSON with groups, commit entries and Markdown text; with `--check-conventional`, emit redacted audit JSON instead
 - `--output FILE` — save to a file instead of stdout
