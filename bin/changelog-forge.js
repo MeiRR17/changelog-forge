@@ -18,6 +18,7 @@ const HELP = [
   '  --version X.Y.Z   Release version (default Unreleased)',
   '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
   '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
+  '  --check-conventional --json  Emit redacted machine-readable CI results',
   '  --require-scope          In CI check mode, demand type(scope): description',
   '  --date YYYY-MM-DD Release date (only used with --version)',
   '  --json            Print structured notes as JSON',
@@ -31,6 +32,7 @@ const HELP = [
   '  changelog-forge --all --json',
   '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
   '  changelog-forge --from v1.2.0 --check-conventional',
+  '  changelog-forge --from v1.2.0 --check-conventional --json',
   '  changelog-forge --output RELEASE_NOTES.md',
 ].join('\n');
 
@@ -76,7 +78,7 @@ function parseArgs(args) {
   if (opts.requireScope && !opts.checkConventional) {
     throw new Error('--require-scope requires --check-conventional.');
   }
-  if (opts.checkConventional && (opts.version || opts.date || opts.json || opts.output ||
+  if (opts.checkConventional && (opts.version || opts.date || opts.output ||
       opts.force || opts['recommend-from'])) {
     throw new Error('--check-conventional is a read-only CI mode and cannot be combined with release or output flags.');
   }
@@ -121,7 +123,9 @@ function main() {
   }
   if (options.checkConventional) {
     const audit = auditConventionalCommits(commits, { requireScope: Boolean(options.requireScope) });
-    process.stdout.write(auditText(audit));
+    // The audit object contains only counts, short hashes and finding codes.
+    // Do not print Git subjects, bodies or author metadata in CI JSON mode.
+    process.stdout.write(options.json ? JSON.stringify(audit, null, 2) + '\n' : auditText(audit));
     if (!audit.compliant) process.exitCode = 1;
     return;
   }
