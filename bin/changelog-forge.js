@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildChangelog } from '../src/changelog.js';
+import { buildChangelog, selectScopeCommits } from '../src/changelog.js';
 import { recommendRelease } from '../src/version.js';
 import { auditConventionalCommits, auditText, auditCountsOnly, auditCountsOnlyText, auditCountsOnlyCsv } from '../src/lint.js';
 
@@ -15,6 +15,7 @@ const HELP = [
   '  --from REF        Include commits after this tag/commit (exclusive)',
   '  --to REF          End ref (default HEAD)',
   '  --all             Use entire available history instead of last reachable tag',
+  '  --scope NAME      Release notes and SemVer advice for exactly this commit scope',
   '  --version X.Y.Z   Release version (default Unreleased)',
   '  --recommend-from X.Y.Z  Suggest next stable SemVer from this version',
   '  --check-conventional     CI check: 0 if all subjects conventional, 1 otherwise',
@@ -33,6 +34,7 @@ const HELP = [
   '  changelog-forge --repo .',
   '  changelog-forge --from v1.2.0 --version 1.3.0',
   '  changelog-forge --all --json',
+  '  changelog-forge --from v1.2.0 --scope api --recommend-from 1.2.0',
   '  changelog-forge --from v1.2.0 --recommend-from 1.2.0',
   '  changelog-forge --from v1.2.0 --check-conventional',
   '  changelog-forge --from v1.2.0 --check-conventional --json',
@@ -83,7 +85,7 @@ function requireAncestor(repo, from, to) {
 
 function parseArgs(args) {
   const opts = { repo: '.', to: 'HEAD', all: false, json: false, force: false };
-  const single = new Set(['--repo', '--from', '--to', '--version', '--date', '--output', '--recommend-from']);
+  const single = new Set(['--repo', '--from', '--to', '--version', '--date', '--output', '--recommend-from', '--scope']);
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
     if (flag === '--help' || flag === '-h') { opts.help = true; continue; }
@@ -108,6 +110,16 @@ function parseArgs(args) {
   }
   if (opts.csv && (!opts.checkConventional || !opts.summaryOnly || opts.json)) {
     throw new Error('--csv requires --check-conventional --summary-only, without --json.');
+  }
+  if (opts.scope !== undefined) {
+    if (!/^[A-Za-z0-9@][A-Za-z0-9@._/-]{0,79}$/.test(opts.scope)) {
+      throw new Error('--scope must be a 1–80 character scope token.');
+    }
+    // An audit must never turn compliant by hiding out-of-scope or malformed
+    // messages; audit the complete selected Git range without filtering.
+    if (opts.checkConventional) {
+      throw new Error('--scope is for release notes only and cannot be combined with --check-conventional.');
+    }
   }
   if (opts.requireScope && !opts.checkConventional) {
     throw new Error('--require-scope requires --check-conventional.');
@@ -176,9 +188,10 @@ function main() {
     if (!audit.compliant) process.exitCode = 1;
     return;
   }
-  const report = buildChangelog(commits, { version: options.version || null, date: options.date || null });
+  const selected = options.scope ? selectScopeCommits(commits, options.scope) : commits;
+  const report = buildChangelog(selected, { version: options.version || null, date: options.date || null });
   const recommendation = options['recommend-from']
-    ? recommendRelease(commits, options['recommend-from']) : null;
+    ? recommendRelease(selected, options['recommend-from']) : null;
   let markdown = report.markdown;
   if (recommendation) {
     const detail = recommendation.nextVersion
@@ -190,12 +203,22 @@ function main() {
       '> ' + detail + '. **Advisory only:** verify your release policy before tagging.\n');
     markdown = lines.join('\n');
   }
+  if (options.scope) {
+    const notice = '> Exact commit scope: \`' + options.scope + '\` (' +
+      selected.length + ' of ' + commits.length + ' range commits). ' +
+      'Unscoped and other scopes are excluded; dependencies are not analyzed.';
+    markdown = markdown.replace('# Changelog\\n\\n', '# Changelog\\n\\n' + notice + '\n\n');
+  }
   const output = options.json ?
-    JSON.stringify({ from: from || null, to: options.to, ...report, ...(recommendation ? { recommendation } : {}) }, null, 2) + '\n' :
+    JSON.stringify({
+      from: from || null, to: options.to,
+      ...(options.scope ? { scope: options.scope, rangeTotal: commits.length, excluded: commits.length - selected.length } : {}),
+      ...report, ...(recommendation ? { recommendation } : {}),
+    }, null, 2) + '\n' :
     markdown;
   if (options.output) {
     writeFileSync(options.output, output, { encoding: 'utf8', flag: options.force ? 'w' : 'wx' });
-    process.stderr.write('Wrote ' + commits.length + ' commits to ' + options.output + '\n');
+    process.stderr.write('Wrote ' + selected.length + ' commits to ' + options.output + '\n');
   } else process.stdout.write(output);
 }
 

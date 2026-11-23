@@ -124,6 +124,21 @@ function validReleaseDate(date) {
     instant.getUTCMonth() + 1 === month && instant.getUTCDate() === day;
 }
 
+/**
+ * Select commits for one exact Conventional Commit scope in a monorepo.
+ * This is a message-based selection, not a filesystem-change dependency
+ * analysis. Unscoped and non-conventional commits are intentionally omitted.
+ * The caller must still collect and bound the entire Git range first.
+ */
+export function selectScopeCommits(commits, scope) {
+  if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');
+  if (typeof scope !== 'string' ||
+      !/^[A-Za-z0-9@][A-Za-z0-9@._/-]{0,79}$/.test(scope)) {
+    throw new RangeError('Scope must be a 1–80 character Conventional Commit scope token.');
+  }
+  return commits.map(normalizeCommitEntry).filter(entry => entry.scope === scope);
+}
+
 /** Summarize a list of commits, preserving incoming commit order. */
 export function buildChangelog(commits, { version = null, date = null } = {}) {
   if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');

@@ -10,6 +10,7 @@ Requires Node.js 22+ and Git on your computer.
     node bin/changelog-forge.js --repo .
     node bin/changelog-forge.js --from v1.2.0 --version 1.3.0
     node bin/changelog-forge.js --all --json
+    node bin/changelog-forge.js --from v1.2.0 --scope api --recommend-from 1.2.0
     node bin/changelog-forge.js --from v1.2.0 --check-conventional
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-scope
     node bin/changelog-forge.js --from v1.2.0 --check-conventional --require-breaking-note
@@ -47,6 +48,19 @@ An example output:
     - **auth:** handle expired token (1234567)
 
 Commit SHA prefixes are included to keep entries traceable without inventing issue or PR links.
+
+## Component-specific release notes
+
+Use `--scope NAME` to generate changelogs for one Conventional Commit scope in a monorepo:
+
+    node bin/changelog-forge.js --from v1.2.0 --scope api
+    node bin/changelog-forge.js --from v1.2.0 --scope api --recommend-from 1.2.0 --json
+
+Scope matching is **case-sensitive and exact**. For example, `feat(api): add endpoint` is included with `--scope api`, but `fix(web): repair menu`, `feat: add feature` and malformed/unconventional commit headers are excluded. The filter accepts 1–80 character tokens comprising letters, digits, `@`, `_`, `-`, `.` and `/`. It does not match paths or infer dependencies. Every commit in the Git range is collected, checked for truncation, and validated **before** scope selection, so a large range cannot evade the 3,000-commit limit by filtering most entries.
+
+In Markdown, the output declares the selected scope and the number of retained and total commits. JSON adds `scope`, `rangeTotal` and `excluded`; `total` and any SemVer recommendation refer **only** to selected commits. This can miss unscoped breaking changes and cross-package impacts. Do not treat a scope-filtered release recommendation as a complete dependency or release-safety analysis. `--scope` is deliberately unavailable in `--check-conventional` mode, since CI policy checks must examine every commit in the selected range.
+
+Library consumers can import `selectScopeCommits(commits, scope)` from `src/changelog.js` and pass its result to `buildChangelog()` or `recommendRelease()`. This helper operates on supplied Git records, does no file or network access, validates parsed entries and preserves commit order.
 
 ## CI Conventional Commit audit
 
@@ -94,6 +108,7 @@ This is **strict SemVer**. A breaking change at `0.4.2` suggests `1.0.0`; teams 
 - `--from REF` — exclusive start ref (tag, branch or commit)
 - `--to REF` — inclusive end ref, default HEAD
 - `--all` — ignore the default most recent reachable tag and summarize all available commits
+- `--scope NAME` — include only commits with this exact Conventional Commit scope in release notes and optional SemVer advice; not available with CI audits
 - `--version X.Y.Z` — generate a release heading instead of Unreleased; validates full SemVer syntax, including prerelease/build metadata, and rejects numeric prerelease identifiers with leading zeros
 - `--recommend-from X.Y.Z` — add a **non-binding** stable SemVer recommendation based on the same commit range
 - `--check-conventional` — read-only CI audit of Conventional Commit subject formatting, outputting short hashes and codes only (plain text or, with `--json`, structured redacted audit results)
@@ -111,7 +126,7 @@ Without `--force`, an existing output file is never overwritten. The CLI skips m
 
 ## Library use
 
-    import { parseCommit, buildChangelog } from './src/changelog.js';
+    import { parseCommit, buildChangelog, selectScopeCommits } from './src/changelog.js';
     const result = buildChangelog([
       { hash: 'abcdef1234567890', subject: 'feat(api): add endpoints', body: '' }
     ]);

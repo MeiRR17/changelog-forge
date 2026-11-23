@@ -1,6 +1,6 @@
 {
   "name": "@meirr17/changelog-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generate readable release notes from Conventional Commits in local Git history",
   "type": "module",
   "engines": { "node": ">=22" },
