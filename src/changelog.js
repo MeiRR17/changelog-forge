@@ -1,0 +1,185 @@
+/**
+ * Conventional Commit release note processing.
+ * All inputs are plain strings; no Git access or network calls in this module.
+ */
+const GROUPS = [
+  ['feat', 'Features'], ['fix', 'Bug Fixes'], ['perf', 'Performance'],
+  ['refactor', 'Refactoring'], ['docs', 'Documentation'],
+  ['build', 'Build'], ['ci', 'Continuous Integration'],
+  ['test', 'Tests'], ['chore', 'Maintenance'], ['style', 'Styling'],
+  ['revert', 'Reverts'],
+];
+const NAMES = new Map(GROUPS);
+const COMMIT_PATTERN = /^([a-z][a-z0-9-]*)(?:\(([^()\r\n]{1,80})\))?(!)?:\s*(.+)$/i;
+
+function extractBreaking(body) {
+  const lines = String(body || '').replace(/\r\n?/g, '\n').split('\n');
+  const notes = [];
+  for (let i = 0; i < lines.length; i++) {
+    const marker = /^BREAKING(?: CHANGE|-CHANGE):\s*(.*)$/i.exec(lines[i]);
+    if (!marker) continue;
+    const content = [marker[1]];
+    while (i + 1 < lines.length && /^[ \t]+\S/.test(lines[i + 1])) {
+      content.push(lines[++i].trim());
+    }
+    notes.push(content.join(' ').trim());
+  }
+  return notes.filter(Boolean);
+}
+
+/**
+ * Turn Git metadata into a normalized entry. If not conventional, retain it
+ * under 'Other Changes' rather than silently losing developer contributions.
+ */
+export function parseCommit(commit) {
+  if (!commit || typeof commit !== 'object') throw new TypeError('Commit must be an object.');
+  const { hash, subject, body = '' } = commit;
+  if (typeof hash !== 'string' || !/^[a-f0-9]{7,64}$/i.test(hash) ||
+      typeof subject !== 'string' || typeof body !== 'string') {
+    throw new TypeError('Commit requires a hash, subject and optional body string.');
+  }
+  const candidate = COMMIT_PATTERN.exec(subject.trim());
+  // A heading with only whitespace after the colon is not conventional.
+  const match = candidate && candidate[4].trim() ? candidate : null;
+  const type = match ? match[1].toLowerCase() : 'other';
+  const breakingNotes = extractBreaking(body);
+  return {
+    hash,
+    shortHash: hash.slice(0, 7),
+    type: NAMES.has(type) ? type : 'other',
+    originalType: type,
+    scope: match ? (match[2] || '') : '',
+    description: match ? match[4].trim() : subject.trim(),
+    breaking: Boolean(match?.[3]) || breakingNotes.length > 0,
+    breakingNotes,
+  };
+}
+
+/**
+ * Accept raw Git records or already parsed entries, but never use the
+ * presence of a truthy shortHash as a trust boundary. Callers may pass
+ * JSON-deserialized or otherwise edited parsed entries; their shape must
+ * be validated before Markdown grouping or SemVer release calculation.
+ * This checks only internal structure, not authenticity of Git history.
+ */
+export function normalizeCommitEntry(commit) {
+  if (!commit || typeof commit !== 'object' || Array.isArray(commit)) {
+    throw new TypeError('Commit must be an object.');
+  }
+  if (!Object.hasOwn(commit, 'shortHash')) return parseCommit(commit);
+
+  const { hash, shortHash, type, originalType, scope, description,
+    breaking, breakingNotes } = commit;
+  if (typeof hash !== 'string' || !/^[a-f0-9]{7,64}$/i.test(hash) ||
+      shortHash !== hash.slice(0, 7) ||
+      typeof originalType !== 'string' ||
+      !/^[a-z][a-z0-9-]*$/.test(originalType) ||
+      type !== (NAMES.has(originalType) ? originalType : 'other') ||
+      typeof scope !== 'string' || scope.length > 80 || /[()\r\n]/.test(scope) ||
+      typeof description !== 'string' || !description.trim() ||
+      description.length > 100_000 ||
+      typeof breaking !== 'boolean' || !Array.isArray(breakingNotes) ||
+      breakingNotes.length > 3000 ||
+      breakingNotes.some(note => typeof note !== 'string' || !note.trim() ||
+        note.length > 100_000) ||
+      (breakingNotes.length > 0 && !breaking)) {
+    throw new TypeError('Invalid parsed commit metadata.');
+  }
+  return { hash, shortHash, type, originalType, scope, description,
+    breaking, breakingNotes: [...breakingNotes] };
+}
+
+const INLINE_ESCAPE = /([\\\x60*_{}\[\]<>|])/g;
+function safeMd(value) {
+  return String(value).replace(/\s+/g, ' ').trim().replace(INLINE_ESCAPE, '\\$1');
+}
+
+function bullet(commit, includeHash = true) {
+  const scope = commit.scope ? '**' + safeMd(commit.scope) + ':** ' : '';
+  return '- ' + scope + safeMd(commit.description) +
+    (includeHash ? ' (' + commit.shortHash + ')' : '');
+}
+
+
+/**
+ * Strict release heading metadata. SemVer core numbers and numeric prerelease
+ * identifiers cannot have leading zeroes; build identifiers may have them.
+ * This is independent of the optional stable-version bump recommender.
+ */
+function validReleaseVersion(version) {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version);
+  if (!match) return false;
+  const prerelease = match[4];
+  return !prerelease || prerelease.split('.').every(identifier =>
+    !/^\d+$/.test(identifier) || identifier === '0' || identifier[0] !== '0');
+}
+function validReleaseDate(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const [year, month, day] = date.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const instant = new Date(0);
+  instant.setUTCHours(0, 0, 0, 0);
+  instant.setUTCFullYear(year, month - 1, day);
+  return instant.getUTCFullYear() === year &&
+    instant.getUTCMonth() + 1 === month && instant.getUTCDate() === day;
+}
+
+/**
+ * Select commits for one exact Conventional Commit scope in a monorepo.
+ * This is a message-based selection, not a filesystem-change dependency
+ * analysis. Unscoped and non-conventional commits are intentionally omitted.
+ * The caller must still collect and bound the entire Git range first.
+ */
+export function selectScopeCommits(commits, scope) {
+  if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');
+  if (typeof scope !== 'string' ||
+      !/^[A-Za-z0-9@][A-Za-z0-9@._/-]{0,79}$/.test(scope)) {
+    throw new RangeError('Scope must be a 1–80 character Conventional Commit scope token.');
+  }
+  return commits.map(normalizeCommitEntry).filter(entry => entry.scope === scope);
+}
+
+/** Summarize a list of commits, preserving incoming commit order. */
+export function buildChangelog(commits, { version = null, date = null } = {}) {
+  if (!Array.isArray(commits)) throw new TypeError('Commits must be an array.');
+  if (version !== null && (typeof version !== 'string' || !validReleaseVersion(version))) {
+    throw new RangeError('Version must be valid SemVer, for example 1.2.3, 1.2.3-rc.1, or 1.2.3+build.4.');
+  }
+  if (date !== null && (typeof date !== 'string' || !validReleaseDate(date))) {
+    throw new RangeError('Release date must be a real YYYY-MM-DD calendar date.');
+  }
+  const parsed = commits.map(normalizeCommitEntry);
+  const groups = GROUPS.map(([type, title]) => ({ type, title, commits: [] }));
+  groups.push({ type: 'other', title: 'Other Changes', commits: [] });
+  const breaking = [];
+  for (const item of parsed) {
+    if (item.breaking) breaking.push(item);
+    else groups.find(group => group.type === item.type).commits.push(item);
+  }
+  const title = version ? '[' + version + ']' + (date ? ' - ' + date : '') : '[Unreleased]';
+  const lines = ['# Changelog', '', '## ' + title, ''];
+  if (!parsed.length) lines.push('No commits in the selected range.', '');
+  if (breaking.length) {
+    lines.push('### Breaking Changes', '');
+    for (const item of breaking) {
+      lines.push(bullet(item), '');
+      for (const note of item.breakingNotes) lines.push('  - ' + safeMd(note));
+      if (item.breakingNotes.length) lines.push('');
+    }
+  }
+  for (const group of groups) {
+    if (!group.commits.length) continue;
+    lines.push('### ' + group.title, '');
+    for (const item of group.commits) lines.push(bullet(item));
+    lines.push('');
+  }
+  return {
+    markdown: lines.join('\n').trimEnd() + '\n',
+    total: parsed.length,
+    breakingCount: breaking.length,
+    groups: groups.filter(g => g.commits.length).map(g => ({
+      type: g.type, title: g.title, count: g.commits.length,
+    })),
+    changes: parsed,
+  };
+}
