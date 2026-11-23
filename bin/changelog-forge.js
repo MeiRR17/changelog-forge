@@ -207,7 +207,7 @@ function main() {
     const notice = '> Exact commit scope: \`' + options.scope + '\` (' +
       selected.length + ' of ' + commits.length + ' range commits). ' +
       'Unscoped and other scopes are excluded; dependencies are not analyzed.';
-    markdown = markdown.replace('# Changelog\\n\\n', '# Changelog\\n\\n' + notice + '\n\n');
+    markdown = markdown.replace(/^# Changelog\n\n/, '# Changelog\n\n' + notice + '\n\n');
   }
   const output = options.json ?
     JSON.stringify({
